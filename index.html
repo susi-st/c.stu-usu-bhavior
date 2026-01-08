@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>學生評量管理系統 - GitHub 雲端部署版</title>
+    <!-- 修正 404: 加入空白 favicon 防止瀏覽器報錯 -->
+    <link rel="icon" href="data:,">
     <!-- CDN 引入 React, ReactDOM, Babel 和 Tailwind CSS -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -26,7 +28,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo } = React;
         
-        // 圖示組件：手動觸發 Lucide 渲染
+        // 圖示組件
         const Icon = ({ name, size = 24, className = "" }) => {
             return <i data-lucide={name} style={{ width: size, height: size }} className={`inline-block ${className}`}></i>;
         };
@@ -55,18 +57,18 @@
 
             const getIndicatorStyle = (index) => indicatorColors[index % indicatorColors.length];
 
-            // 讀取雲端資料：強化異常捕獲邏輯
+            // 讀取雲端資料：強化異常捕獲
             const fetchCloudData = useCallback(async () => {
                 setLoadingCloud(true);
                 setCloudError(null);
                 try {
+                    // 使用 redirect: 'follow' 處理 GAS 的轉址
                     const response = await fetch(gasUrl, { 
                         method: 'GET',
-                        redirect: 'follow',
-                        cache: 'no-cache'
+                        redirect: 'follow'
                     });
                     
-                    if (!response.ok) throw new Error("Google Script 未回應內容");
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     
                     const cloudData = await response.json();
                     
@@ -84,8 +86,8 @@
                         if (formatted.length > 0) setCurrentIndex(0);
                     }
                 } catch (e) {
-                    console.warn("連線被阻擋 (CORS):", e);
-                    setCloudError("雲端讀取異常。這通常發生在預覽模式或尚未部署到 GitHub Pages 時。請放心，這不會影響您辨識新圖檔與存檔功能。");
+                    console.warn("Cloud Sync Blocked:", e);
+                    setCloudError("雲端讀取異常。這通常發生在非正式網域環境或 GAS 尚未重新部署。現在您仍可直接辨識新照片並存檔。");
                 } finally {
                     setLoadingCloud(false);
                     setTimeout(() => { if(window.lucide) window.lucide.createIcons(); }, 300);
@@ -93,7 +95,11 @@
             }, [gasUrl]);
 
             useEffect(() => { fetchCloudData(); }, [fetchCloudData]);
-            useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
+            
+            // 每次渲染確保圖示觸發
+            useEffect(() => { 
+                if(window.lucide) window.lucide.createIcons(); 
+            });
 
             // 鍵盤切換
             useEffect(() => {
@@ -119,7 +125,7 @@
                 if (images.length === 0) return;
                 setProcessing(true);
                 const results = [...dataList];
-                setProgress({ current: 0, total: images.length, task: "啟動 AI 辨識引擎..." });
+                setProgress({ current: 0, total: images.length, task: "正在啟動 AI 辨識引擎..." });
 
                 for (let i = 0; i < images.length; i++) {
                     setProgress({ current: i + 1, total: images.length, task: `分析進度 (${i+1}/${images.length})...` });
@@ -128,7 +134,7 @@
                             const r = new FileReader(); r.readAsDataURL(images[i].file);
                             r.onload = () => res(r.result.split(',')[1]);
                         });
-                        const prompt = `請辨識圖片中的「座號」、「姓名」及指標。純 JSON 回傳，範例：{"seatNumber":"1","name":"王小明","assessments":[{"item":"指標","level":"完全符合"}]}`;
+                        const prompt = `請識別圖片中的「座號」、「姓名」及指標。純 JSON 回傳，範例：{"seatNumber":"1","name":"王小明","assessments":[{"item":"指標","level":"完全符合"}]}`;
                         
                         const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                             method: 'POST',
@@ -136,8 +142,8 @@
                             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64 } }] }] })
                         });
                         const data = await resp.json();
-                        const raw = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
-                        const resObj = JSON.parse(raw);
+                        const rawText = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+                        const resObj = JSON.parse(rawText);
                         
                         const entry = { 
                             ...resObj, 
@@ -159,11 +165,11 @@
 
             const generateComment = async (index) => {
                 if (!dataList[index]) return;
-                const student = dataList[index];
+                const studentData = dataList[index];
                 setProcessing(true);
                 setProgress({ current: 1, total: 1, task: "正在生成教育回饋..." });
                 try {
-                    const prompt = `你是一位專業國中導師。根據結果寫一段 60 字內正向溫暖的評語，座號 ${student.seatNumber}：${JSON.stringify(student.assessments)}`;
+                    const prompt = `你是一位導師。根據結果寫一段 60 字內正向勉勵語，座號 ${studentData.seatNumber}：${JSON.stringify(studentData.assessments)}`;
                     const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -178,24 +184,25 @@
 
             const saveToSheet = async (index) => {
                 if (!dataList[index]) return;
-                const student = dataList[index];
+                const studentData = dataList[index];
                 setProcessing(true);
-                setProgress({ current: 1, total: 1, task: "正在將資料送往雲端..." });
+                setProgress({ current: 1, total: 1, task: "同步資料中..." });
                 try {
+                    // 使用 no-cors 模式發送 POST
                     await fetch(gasUrl, { 
                         method: 'POST', 
                         mode: 'no-cors', 
                         headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify(student) 
+                        body: JSON.stringify(studentData) 
                     });
                     const newList = [...dataList];
                     newList[index].isSaved = true;
                     setDataList(newList);
-                } catch (e) { alert("同步連線中斷"); }
+                } catch (e) { alert("同步失敗"); }
                 setProcessing(false);
             };
 
-            // 使用 useMemo 進行嚴格的變數保護
+            // 使用 useMemo 進行保護
             const currentStudent = useMemo(() => {
                 if (dataList && dataList.length > 0 && dataList[currentIndex]) {
                     return dataList[currentIndex];
@@ -222,13 +229,15 @@
                         {dataList.length === 0 && !loadingCloud ? (
                             <div className="bg-white p-12 rounded-[3rem] shadow-2xl text-center border border-slate-100 animate-in">
                                 <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner">
-                                    <Icon name="file-spreadsheet" size={48} />
+                                    <Icon name="database" size={48} />
                                 </div>
                                 <h1 className="text-4xl font-black mb-4 tracking-tight text-slate-800">學生評量管理系統</h1>
-                                <p className="text-slate-500 mb-12 text-lg font-medium leading-relaxed">請點擊下方區域匯入學生的自我評量照片，系統將自動進行辨識。</p>
+                                <p className="text-slate-500 mb-12 text-lg font-medium leading-relaxed tracking-tight text-balance">
+                                    匯入照片進行批次辨識。核對後可同步至 Google 試算表存檔。
+                                </p>
                                 
                                 {cloudError && (
-                                    <div className="mb-8 p-6 bg-rose-50 text-rose-700 rounded-3xl text-sm border border-rose-100 flex items-start gap-4 text-left max-w-2xl mx-auto">
+                                    <div className="mb-8 p-6 bg-rose-50 text-rose-700 rounded-3xl text-sm border border-rose-100 flex items-start gap-4 text-left max-w-2xl mx-auto shadow-sm">
                                         <Icon name="alert-circle" size={24} className="flex-shrink-0 mt-1" />
                                         <p className="font-medium leading-relaxed">{String(cloudError)}</p>
                                     </div>
@@ -237,14 +246,16 @@
                                 <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" id="file-upload" />
                                 <label htmlFor="file-upload" className="block p-20 border-2 border-dashed border-slate-200 rounded-[3.5rem] cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all duration-500 group">
                                     <Icon name="upload" size={64} className="mx-auto text-slate-300 mb-4 group-hover:-translate-y-2 transition-transform duration-500" />
-                                    <p className="text-2xl font-bold text-slate-600 tracking-tight">{images.length > 0 ? `已選取 ${images.length} 份評量表` : "點擊此處匯入學生評量照片"}</p>
-                                    <p className="text-slate-400 mt-2">辨識完成後可將資料同步至您的 Google 試算表</p>
+                                    <p className="text-2xl font-bold text-slate-600 tracking-tight">
+                                        {images.length > 0 ? `已選取 ${images.length} 份文件` : "點擊此處匯入學生評量照片"}
+                                    </p>
+                                    <p className="text-slate-400 mt-2 font-medium">辨識完成後可將資料同步至您的試算表</p>
                                 </label>
                                 
                                 <div className="mt-12 flex flex-wrap justify-center gap-6">
-                                    <button onClick={startRecognition} disabled={images.length===0} className="px-16 py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-2xl shadow-blue-100 disabled:bg-slate-200 transition-all hover:scale-105 active:scale-95">開始批次辨識</button>
-                                    <button onClick={fetchCloudData} className="px-12 py-6 bg-white border-2 border-slate-100 rounded-[2rem] font-bold text-slate-600 flex items-center gap-3 hover:bg-slate-50 shadow-lg transition-all">
-                                        <Icon name="refresh-cw" size={24} /> 嘗試連線雲端
+                                    <button onClick={startRecognition} disabled={images.length===0} className="px-16 py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-2xl shadow-blue-100 disabled:bg-slate-200 transition-all hover:scale-105 active:scale-95">開始辨識</button>
+                                    <button onClick={fetchCloudData} className="px-12 py-6 bg-white border-2 border-slate-100 rounded-[2rem] font-bold text-slate-600 flex items-center gap-3 hover:bg-slate-50 transition-all shadow-lg">
+                                        <Icon name="refresh-cw" size={24} /> 讀取雲端存檔
                                     </button>
                                 </div>
                             </div>
@@ -255,8 +266,8 @@
                                         <div className="flex items-center gap-8">
                                             <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-mono font-black text-xl shadow-xl">{currentIndex + 1} / {dataList.length}</div>
                                             <h2 className="font-black text-slate-800 text-2xl hidden lg:block tracking-tight">
-                                                座號 <span className="text-blue-600">{String(currentStudent.seatNumber || "")}</span> — {String(currentStudent.name || "未識別")}
-                                                {currentStudent.isSaved && <span className="ml-6 text-[11px] bg-emerald-500 text-white px-4 py-1.5 rounded-full uppercase tracking-[0.2em] font-black shadow-lg">Synced</span>}
+                                                座號 <span className="text-blue-600">{String(currentStudent.seatNumber || "")}</span> — {String(currentStudent.name || "未辨識")}
+                                                {currentStudent.isSaved && <span className="ml-6 text-[11px] bg-emerald-500 text-white px-4 py-1.5 rounded-full uppercase tracking-widest font-black shadow-lg">Synced</span>}
                                             </h2>
                                         </div>
                                         <div className="flex gap-4">
@@ -266,11 +277,10 @@
                                     </div>
 
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                                        {/* 照片預覽卡片 */}
                                         <div className="bg-white p-6 rounded-[3.5rem] shadow-2xl border border-slate-50 group">
                                             <div className="flex items-center justify-between mb-4 px-4">
                                                 <span className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                                                    <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse shadow-sm"></span> 影像對照
+                                                    <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse shadow-sm"></span> 影像核對
                                                 </span>
                                             </div>
                                             <div className="bg-slate-100/30 rounded-[2.5rem] overflow-hidden md:h-[750px] flex items-center justify-center border border-slate-100 relative group-hover:shadow-inner transition-shadow">
@@ -282,25 +292,24 @@
                                             </div>
                                         </div>
 
-                                        {/* 右側編輯卡片 */}
-                                        <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl flex flex-col border border-slate-50 h-full">
+                                        <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl flex flex-col border border-slate-100 h-full">
                                             <div className="grid grid-cols-2 gap-10 mb-12">
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Icon name="hash" size={14}/> Seat Number</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 font-mono"><Icon name="hash" size={14}/> SEAT NO.</label>
                                                     <input type="number" value={String(currentStudent.seatNumber || "")} onChange={e => {
                                                         const nl = [...dataList]; nl[currentIndex].seatNumber = String(e.target.value); nl[currentIndex].isSaved = false; setDataList(nl);
                                                     }} className="w-full text-4xl font-black border-b-4 border-slate-50 focus:border-blue-500 outline-none pb-3 bg-transparent transition-all" />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={14}/> Student Name</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 font-mono"><Icon name="user" size={14}/> STUDENT NAME</label>
                                                     <input type="text" value={String(currentStudent.name || "")} onChange={e => {
                                                         const nl = [...dataList]; nl[currentIndex].name = String(e.target.value); nl[currentIndex].isSaved = false; setDataList(nl);
-                                                    }} className="w-full text-4xl font-black border-b-4 border-slate-50 focus:border-blue-500 outline-none pb-3 bg-transparent transition-all" />
+                                                    }} className="w-full text-4xl font-black border-b-4 border-slate-100 focus:border-blue-500 outline-none pb-3 bg-transparent transition-all" />
                                                 </div>
                                             </div>
 
                                             <div className="flex-1 space-y-5 mb-12 overflow-y-auto pr-4 custom-scrollbar min-h-[350px]">
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">指標符合程度校核</p>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">指標符合程度核對</p>
                                                 {(currentStudent.assessments || []).map((item, idx) => {
                                                     const style = getIndicatorStyle(idx);
                                                     return (
@@ -320,16 +329,16 @@
 
                                             <div className="pt-10 border-t-2 border-slate-50">
                                                 <div className="flex justify-between items-center mb-6">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-slate-400 tracking-[0.2em]">教師溫暖回饋</label>
-                                                    <button onClick={() => generateComment(currentIndex)} className="text-blue-600 text-xs font-black flex items-center gap-2 px-5 py-2.5 rounded-full border-2 border-blue-50 bg-blue-50/20 shadow-sm hover:bg-blue-600 hover:text-white transition-all"><Icon name="sparkles" size={16}/>重新生成評語</button>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-slate-400 tracking-[0.2em]">教師暖心評語</label>
+                                                    <button onClick={() => generateComment(currentIndex)} className="text-blue-600 text-xs font-black flex items-center gap-2 px-5 py-2.5 rounded-full border-2 border-blue-50 bg-blue-50 shadow-sm hover:bg-blue-600 hover:text-white transition-all"><Icon name="sparkles" size={16}/>重新生成回饋</button>
                                                 </div>
                                                 <textarea value={String(currentStudent.comment || "")} onChange={e => {
                                                     const nl = [...dataList]; nl[currentIndex].comment = String(e.target.value); nl[currentIndex].isSaved = false; setDataList(nl);
-                                                }} className="w-full h-44 p-8 bg-blue-50/10 rounded-[2.5rem] border-2 border-transparent focus:border-blue-100 focus:bg-white outline-none resize-none text-slate-700 text-base leading-relaxed transition-all shadow-inner font-medium italic" placeholder="AI 將根據結果為學生量身打造正向的教育勉勵..." />
+                                                }} className="w-full h-44 p-8 bg-blue-50/10 rounded-[2.5rem] border-2 border-transparent focus:border-blue-100 focus:bg-white outline-none resize-none text-slate-700 text-base leading-relaxed transition-all shadow-inner font-medium italic" placeholder="AI 將根據校對結果自動產製回饋..." />
                                             </div>
 
                                             <button onClick={() => saveToSheet(currentIndex)} className={`mt-10 w-full py-6 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-4 transition-all duration-500 shadow-2xl hover:-translate-y-2 active:scale-95 ${currentStudent.isSaved ? 'bg-emerald-500 text-white shadow-emerald-200 ring-4 ring-emerald-50' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-slate-300'}`}>
-                                                {currentStudent.isSaved ? <><Icon name="check" size={28} /> 資料同步已完成</> : <><Icon name="save" size={28} /> 確認校對並存至雲端</>}
+                                                {currentStudent.isSaved ? <><Icon name="check" size={28} /> 資料已同步</> : <><Icon name="save" size={28} /> 確認校對並存至雲端</>}
                                             </button>
                                         </div>
                                     </div>
