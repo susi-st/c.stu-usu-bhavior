@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學生評量管理系統 - GitHub 雲端部署版</title>
+    <!-- CDN 引入 React, ReactDOM, Babel 和 Tailwind CSS -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        body { font-family: 'Noto+Sans+TC', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.5s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo } = React;
+        
+        // 圖示組件：手動觸發 Lucide 渲染
+        const Icon = ({ name, size = 24, className = "" }) => {
+            return <i data-lucide={name} style={{ width: size, height: size }} className={`inline-block ${className}`}></i>;
+        };
+
+        const AdvancedAssessmentApp = () => {
+            const [images, setImages] = useState([]);
+            const [dataList, setDataList] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [processing, setProcessing] = useState(false);
+            const [loadingCloud, setLoadingCloud] = useState(false);
+            const [cloudError, setCloudError] = useState(null);
+            const [progress, setProgress] = useState({ current: 0, total: 0, task: "" });
+
+            // 配置資訊
+            const gasUrl = "https://script.google.com/macros/s/AKfycbyHfFgeTDsyAgujt7KIrTbII7r0Oa190Dh8KJe4qh38EMxpYvd3JjxblDFPPj4109Mz/exec";
+            const apiKey = "AIzaSyAQEGtf6XIoZU2m9koMm_SKu_BvVtC3jYM";
+            const LEVELS = ["完全符合", "部分符合", "待改進"];
+
+            const indicatorColors = [
+                { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-700', active: 'bg-blue-600' },
+                { bg: 'bg-emerald-50', border: 'border-emerald-100', text: 'text-emerald-700', active: 'bg-emerald-600' },
+                { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-700', active: 'bg-amber-600' },
+                { bg: 'bg-indigo-50', border: 'border-indigo-100', text: 'text-indigo-700', active: 'bg-indigo-600' },
+                { bg: 'bg-rose-50', border: 'border-rose-100', text: 'text-rose-700', active: 'bg-rose-600' },
+            ];
+
+            const getIndicatorStyle = (index) => indicatorColors[index % indicatorColors.length];
+
+            // 讀取雲端資料：強化異常捕獲邏輯
+            const fetchCloudData = useCallback(async () => {
+                setLoadingCloud(true);
+                setCloudError(null);
+                try {
+                    const response = await fetch(gasUrl, { 
+                        method: 'GET',
+                        redirect: 'follow',
+                        cache: 'no-cache'
+                    });
+                    
+                    if (!response.ok) throw new Error("Google Script 未回應內容");
+                    
+                    const cloudData = await response.json();
+                    
+                    if (Array.isArray(cloudData)) {
+                        const formatted = cloudData.map(item => ({
+                            ...item,
+                            seatNumber: item.seatNumber !== undefined ? String(item.seatNumber) : "",
+                            name: item.name !== undefined ? String(item.name) : "",
+                            comment: item.comment !== undefined ? String(item.comment) : "",
+                            assessments: Array.isArray(item.assessments) ? item.assessments : [],
+                            isSaved: true
+                        })).sort((a, b) => (parseInt(a.seatNumber) || 0) - (parseInt(b.seatNumber) || 0));
+                        
+                        setDataList(formatted);
+                        if (formatted.length > 0) setCurrentIndex(0);
+                    }
+                } catch (e) {
+                    console.warn("連線被阻擋 (CORS):", e);
+                    setCloudError("雲端讀取異常。這通常發生在預覽模式或尚未部署到 GitHub Pages 時。請放心，這不會影響您辨識新圖檔與存檔功能。");
+                } finally {
+                    setLoadingCloud(false);
+                    setTimeout(() => { if(window.lucide) window.lucide.createIcons(); }, 300);
+                }
+            }, [gasUrl]);
+
+            useEffect(() => { fetchCloudData(); }, [fetchCloudData]);
+            useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
+
+            // 鍵盤切換
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (dataList.length <= 1 || processing) return;
+                    if (e.key === 'ArrowLeft') setCurrentIndex(p => Math.max(p - 1, 0));
+                    if (e.key === 'ArrowRight') setCurrentIndex(p => Math.min(p + 1, dataList.length - 1));
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [dataList.length, processing]);
+
+            const handleFileUpload = (e) => {
+                const files = Array.from(e.target.files);
+                setImages(files.map(file => ({ 
+                    file, 
+                    id: Math.random().toString(36).substr(2, 9), 
+                    preview: URL.createObjectURL(file) 
+                })));
+            };
+
+            const startRecognition = async () => {
+                if (images.length === 0) return;
+                setProcessing(true);
+                const results = [...dataList];
+                setProgress({ current: 0, total: images.length, task: "啟動 AI 辨識引擎..." });
+
+                for (let i = 0; i < images.length; i++) {
+                    setProgress({ current: i + 1, total: images.length, task: `分析進度 (${i+1}/${images.length})...` });
+                    try {
+                        const base64 = await new Promise((res) => {
+                            const r = new FileReader(); r.readAsDataURL(images[i].file);
+                            r.onload = () => res(r.result.split(',')[1]);
+                        });
+                        const prompt = `請辨識圖片中的「座號」、「姓名」及指標。純 JSON 回傳，範例：{"seatNumber":"1","name":"王小明","assessments":[{"item":"指標","level":"完全符合"}]}`;
+                        
+                        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64 } }] }] })
+                        });
+                        const data = await resp.json();
+                        const raw = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+                        const resObj = JSON.parse(raw);
+                        
+                        const entry = { 
+                            ...resObj, 
+                            seatNumber: String(resObj.seatNumber || ""), 
+                            name: String(resObj.name || ""), 
+                            preview: `data:image/jpeg;base64,${base64}`, 
+                            comment: "", 
+                            isSaved: false 
+                        };
+                        const idx = results.findIndex(item => String(item.seatNumber) === String(resObj.seatNumber));
+                        if (idx > -1) results[idx] = entry; else results.push(entry);
+                    } catch (e) { console.error("辨識失敗:", e); }
+                }
+                setDataList(results.sort((a, b) => (parseInt(a.seatNumber) || 0) - (parseInt(b.seatNumber) || 0)));
+                setProcessing(false);
+                setCurrentIndex(0);
+                setImages([]);
+            };
+
+            const generateComment = async (index) => {
+                if (!dataList[index]) return;
+                const student = dataList[index];
+                setProcessing(true);
+                setProgress({ current: 1, total: 1, task: "正在生成教育回饋..." });
+                try {
+                    const prompt = `你是一位專業國中導師。根據結果寫一段 60 字內正向溫暖的評語，座號 ${student.seatNumber}：${JSON.stringify(student.assessments)}`;
+                    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await resp.json();
+                    const newList = [...dataList];
+                    newList[index].comment = String(data.candidates[0].content.parts[0].text);
+                    setDataList(newList);
+                } catch (e) { console.error("評語異常:", e); }
+                setProcessing(false);
+            };
+
+            const saveToSheet = async (index) => {
+                if (!dataList[index]) return;
+                const student = dataList[index];
+                setProcessing(true);
+                setProgress({ current: 1, total: 1, task: "正在將資料送往雲端..." });
+                try {
+                    await fetch(gasUrl, { 
+                        method: 'POST', 
+                        mode: 'no-cors', 
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify(student) 
+                    });
+                    const newList = [...dataList];
+                    newList[index].isSaved = true;
+                    setDataList(newList);
+                } catch (e) { alert("同步連線中斷"); }
+                setProcessing(false);
+            };
+
+            // 使用 useMemo 進行嚴格的變數保護
+            const currentStudent = useMemo(() => {
+                if (dataList && dataList.length > 0 && dataList[currentIndex]) {
+                    return dataList[currentIndex];
+                }
+                return null;
+            }, [dataList, currentIndex]);
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
+                    {/* 全域載入遮罩 */}
+                    {processing && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[60] flex items-center justify-center p-6">
+                            <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl text-center border border-white/20 animate-in">
+                                <Icon name="loader-2" size={56} className="animate-spin text-blue-600 mx-auto mb-6" />
+                                <h3 className="text-2xl font-bold text-slate-800 mb-4 tracking-tight">{progress.task}</h3>
+                                <div className="w-full bg-slate-100 rounded-full h-4 mb-3 overflow-hidden p-1 border border-slate-200">
+                                    <div className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-500" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="w-full max-w-6xl">
+                        {dataList.length === 0 && !loadingCloud ? (
+                            <div className="bg-white p-12 rounded-[3rem] shadow-2xl text-center border border-slate-100 animate-in">
+                                <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner">
+                                    <Icon name="file-spreadsheet" size={48} />
+                                </div>
+                                <h1 className="text-4xl font-black mb-4 tracking-tight text-slate-800">學生評量管理系統</h1>
+                                <p className="text-slate-500 mb-12 text-lg font-medium leading-relaxed">請點擊下方區域匯入學生的自我評量照片，系統將自動進行辨識。</p>
+                                
+                                {cloudError && (
+                                    <div className="mb-8 p-6 bg-rose-50 text-rose-700 rounded-3xl text-sm border border-rose-100 flex items-start gap-4 text-left max-w-2xl mx-auto">
+                                        <Icon name="alert-circle" size={24} className="flex-shrink-0 mt-1" />
+                                        <p className="font-medium leading-relaxed">{String(cloudError)}</p>
+                                    </div>
+                                )}
+                                
+                                <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" id="file-upload" />
+                                <label htmlFor="file-upload" className="block p-20 border-2 border-dashed border-slate-200 rounded-[3.5rem] cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all duration-500 group">
+                                    <Icon name="upload" size={64} className="mx-auto text-slate-300 mb-4 group-hover:-translate-y-2 transition-transform duration-500" />
+                                    <p className="text-2xl font-bold text-slate-600 tracking-tight">{images.length > 0 ? `已選取 ${images.length} 份評量表` : "點擊此處匯入學生評量照片"}</p>
+                                    <p className="text-slate-400 mt-2">辨識完成後可將資料同步至您的 Google 試算表</p>
+                                </label>
+                                
+                                <div className="mt-12 flex flex-wrap justify-center gap-6">
+                                    <button onClick={startRecognition} disabled={images.length===0} className="px-16 py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-2xl shadow-blue-100 disabled:bg-slate-200 transition-all hover:scale-105 active:scale-95">開始批次辨識</button>
+                                    <button onClick={fetchCloudData} className="px-12 py-6 bg-white border-2 border-slate-100 rounded-[2rem] font-bold text-slate-600 flex items-center gap-3 hover:bg-slate-50 shadow-lg transition-all">
+                                        <Icon name="refresh-cw" size={24} /> 嘗試連線雲端
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            currentStudent && (
+                                <div className="space-y-6 animate-in">
+                                    <div className="bg-white/90 backdrop-blur-xl px-10 py-6 rounded-[2.5rem] shadow-sm flex items-center justify-between border border-slate-100 sticky top-4 z-40">
+                                        <div className="flex items-center gap-8">
+                                            <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-mono font-black text-xl shadow-xl">{currentIndex + 1} / {dataList.length}</div>
+                                            <h2 className="font-black text-slate-800 text-2xl hidden lg:block tracking-tight">
+                                                座號 <span className="text-blue-600">{String(currentStudent.seatNumber || "")}</span> — {String(currentStudent.name || "未識別")}
+                                                {currentStudent.isSaved && <span className="ml-6 text-[11px] bg-emerald-500 text-white px-4 py-1.5 rounded-full uppercase tracking-[0.2em] font-black shadow-lg">Synced</span>}
+                                            </h2>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <button onClick={() => setCurrentIndex(p => Math.max(p - 1, 0))} className="p-4 bg-white border-2 border-slate-50 rounded-2xl hover:bg-slate-50 transition-all active:scale-90 shadow-sm"><Icon name="chevron-left" size={24} /></button>
+                                            <button onClick={() => setCurrentIndex(p => Math.min(p + 1, dataList.length - 1))} className="p-4 bg-white border-2 border-slate-50 rounded-2xl hover:bg-slate-50 transition-all active:scale-90 shadow-sm"><Icon name="chevron-right" size={24} /></button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                                        {/* 照片預覽卡片 */}
+                                        <div className="bg-white p-6 rounded-[3.5rem] shadow-2xl border border-slate-50 group">
+                                            <div className="flex items-center justify-between mb-4 px-4">
+                                                <span className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                                                    <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse shadow-sm"></span> 影像對照
+                                                </span>
+                                            </div>
+                                            <div className="bg-slate-100/30 rounded-[2.5rem] overflow-hidden md:h-[750px] flex items-center justify-center border border-slate-100 relative group-hover:shadow-inner transition-shadow">
+                                                {currentStudent.preview ? (
+                                                    <img src={currentStudent.preview} className="max-w-full max-h-full object-contain transition-transform duration-700 group-hover:scale-105" />
+                                                ) : (
+                                                    <p className="font-black text-slate-400">影像加載中...</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* 右側編輯卡片 */}
+                                        <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl flex flex-col border border-slate-50 h-full">
+                                            <div className="grid grid-cols-2 gap-10 mb-12">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Icon name="hash" size={14}/> Seat Number</label>
+                                                    <input type="number" value={String(currentStudent.seatNumber || "")} onChange={e => {
+                                                        const nl = [...dataList]; nl[currentIndex].seatNumber = String(e.target.value); nl[currentIndex].isSaved = false; setDataList(nl);
+                                                    }} className="w-full text-4xl font-black border-b-4 border-slate-50 focus:border-blue-500 outline-none pb-3 bg-transparent transition-all" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Icon name="user" size={14}/> Student Name</label>
+                                                    <input type="text" value={String(currentStudent.name || "")} onChange={e => {
+                                                        const nl = [...dataList]; nl[currentIndex].name = String(e.target.value); nl[currentIndex].isSaved = false; setDataList(nl);
+                                                    }} className="w-full text-4xl font-black border-b-4 border-slate-50 focus:border-blue-500 outline-none pb-3 bg-transparent transition-all" />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex-1 space-y-5 mb-12 overflow-y-auto pr-4 custom-scrollbar min-h-[350px]">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">指標符合程度校核</p>
+                                                {(currentStudent.assessments || []).map((item, idx) => {
+                                                    const style = getIndicatorStyle(idx);
+                                                    return (
+                                                        <div key={idx} className={`flex flex-col md:flex-row md:items-center justify-between p-5 ${style.bg} rounded-[2rem] border ${style.border} transition-all hover:translate-x-1 gap-4 shadow-sm`}>
+                                                            <span className={`font-black ${style.text} tracking-tight`}>{String(item.item || "指標項目")}</span>
+                                                            <div className="flex bg-white/80 p-1.5 rounded-2xl shadow-inner border border-white/50">
+                                                                {LEVELS.map(l => (
+                                                                    <button key={l} onClick={() => {
+                                                                        const nl = [...dataList]; nl[currentIndex].assessments[idx].level = String(l); nl[currentIndex].isSaved = false; setDataList(nl);
+                                                                    }} className={`px-5 py-2 text-xs font-black rounded-xl transition-all duration-300 ${item.level === l ? `${style.active} text-white shadow-xl shadow-blue-200` : 'text-slate-300 hover:text-slate-500'}`}>{String(l)}</button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="pt-10 border-t-2 border-slate-50">
+                                                <div className="flex justify-between items-center mb-6">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-slate-400 tracking-[0.2em]">教師溫暖回饋</label>
+                                                    <button onClick={() => generateComment(currentIndex)} className="text-blue-600 text-xs font-black flex items-center gap-2 px-5 py-2.5 rounded-full border-2 border-blue-50 bg-blue-50/20 shadow-sm hover:bg-blue-600 hover:text-white transition-all"><Icon name="sparkles" size={16}/>重新生成評語</button>
+                                                </div>
+                                                <textarea value={String(currentStudent.comment || "")} onChange={e => {
+                                                    const nl = [...dataList]; nl[currentIndex].comment = String(e.target.value); nl[currentIndex].isSaved = false; setDataList(nl);
+                                                }} className="w-full h-44 p-8 bg-blue-50/10 rounded-[2.5rem] border-2 border-transparent focus:border-blue-100 focus:bg-white outline-none resize-none text-slate-700 text-base leading-relaxed transition-all shadow-inner font-medium italic" placeholder="AI 將根據結果為學生量身打造正向的教育勉勵..." />
+                                            </div>
+
+                                            <button onClick={() => saveToSheet(currentIndex)} className={`mt-10 w-full py-6 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-4 transition-all duration-500 shadow-2xl hover:-translate-y-2 active:scale-95 ${currentStudent.isSaved ? 'bg-emerald-500 text-white shadow-emerald-200 ring-4 ring-emerald-50' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-slate-300'}`}>
+                                                {currentStudent.isSaved ? <><Icon name="check" size={28} /> 資料同步已完成</> : <><Icon name="save" size={28} /> 確認校對並存至雲端</>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AdvancedAssessmentApp />);
+    </script>
+</body>
+</html>
