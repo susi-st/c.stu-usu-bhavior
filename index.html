@@ -29,7 +29,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo } = React;
         
-        // 穩定版 SVG 圖示組件：不操作 DOM，與 React 完全相容
+        // 穩定版 SVG 圖示組件
         const Icon = ({ name, size = 24, className = "" }) => {
             const paths = {
                 'loader-2': <path d="M21 12a9 9 0 1 1-6.219-8.56" />,
@@ -76,11 +76,7 @@
                 setLoadingCloud(true);
                 setCloudError(null);
                 try {
-                    // 使用 GET 請求載入存檔
-                    const response = await fetch(gasUrl, { 
-                        method: 'GET', 
-                        redirect: 'follow'
-                    });
+                    const response = await fetch(gasUrl, { method: 'GET', redirect: 'follow' });
                     const cloudData = await response.json();
                     if (Array.isArray(cloudData)) {
                         const sorted = cloudData.map(item => ({ ...item, isSaved: true })).sort((a, b) => (parseInt(a.seatNumber) || 0) - (parseInt(b.seatNumber) || 0));
@@ -88,7 +84,7 @@
                     }
                 } catch (e) {
                     console.error("Cloud Error:", e);
-                    setCloudError("雲端載入受限。請確認 GAS 已部署為「所有人」。");
+                    setCloudError("雲端載入失敗。請檢查 GAS 的 Anyone 權限設定。");
                 } finally {
                     setLoadingCloud(false);
                 }
@@ -116,11 +112,12 @@
                             r.onload = () => res(r.result.split(',')[1]);
                         });
 
-                        // 核心穩定性修正：使用不帶特定 Header 的 POST 請求以繞過 CORS 預檢
+                        // 關鍵修復：使用 Content-Type: text/plain 繞過 CORS OPTIONS 預檢
                         const resp = await fetch(gasUrl, {
                             method: 'POST',
-                            redirect: 'follow',
-                            // 不設定 Content-Type: application/json 以避免 OPTIONS 預檢失敗
+                            mode: 'cors',
+                            redirect: 'follow', 
+                            headers: { 'Content-Type': 'text/plain' },
                             body: JSON.stringify({ action: "ocr", base64: base64 })
                         });
                         
@@ -128,7 +125,7 @@
                         if (data.error) throw new Error(data.error.message);
                         
                         const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (!resultText) throw new Error("AI 未回傳辨識內容");
+                        if (!resultText) throw new Error("AI 未回傳結果");
                         const result = JSON.parse(resultText);
                         
                         const entry = { ...result, seatNumber: String(result.seatNumber || ""), name: String(result.name || "未識別"), preview: `data:image/jpeg;base64,${base64}`, comment: "", isSaved: false };
@@ -136,7 +133,7 @@
                         if (idx > -1) currentResults[idx] = entry; else currentResults.push(entry);
                     } catch (e) { 
                         console.error("辨識異常:", e); 
-                        setProgress(p => ({ ...p, task: `連線失敗: 請確認 GAS 權限。` }));
+                        setProgress(p => ({ ...p, task: `連線失敗，請檢查 GAS 部署權限。` }));
                         await new Promise(r => setTimeout(r, 2000));
                         break;
                     }
@@ -150,11 +147,12 @@
             const saveToSheet = async (index) => {
                 if (!dataList[index]) return;
                 setProcessing(true);
-                setProgress({ current: 1, total: 1, task: "同步雲端中..." });
+                setProgress({ current: 1, total: 1, task: "正在存檔..." });
                 try {
                     await fetch(gasUrl, { 
                         method: 'POST', 
                         redirect: 'follow',
+                        headers: { 'Content-Type': 'text/plain' },
                         body: JSON.stringify({ ...dataList[index], action: "save" }) 
                     });
                     const newList = [...dataList];
@@ -172,7 +170,7 @@
                 const map = new Map();
                 currentStudent.assessments.forEach((item, originalIdx) => {
                     const parts = item.item.split(/[-－:：]/);
-                    const category = parts.length > 1 ? parts[0].trim() : "核心指標";
+                    const category = parts.length > 1 ? parts[0].trim() : "指標項目";
                     const subItem = parts.length > 1 ? parts.slice(1).join('-').trim() : item.item.trim();
                     if (!map.has(category)) {
                         const theme = indicatorThemes[groups.length % indicatorThemes.length];
@@ -193,7 +191,6 @@
                 });
             };
 
-            // 深層拷貝更新邏輯：確保點擊後底色立即切換
             const updateAssessment = (originalIdx, level) => {
                 setDataList(prev => {
                     const newList = [...prev];
@@ -209,6 +206,7 @@
 
             return (
                 <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
+                    {/* 遮罩 */}
                     {processing && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[60] flex items-center justify-center p-6 text-white text-center">
                             <div className="bg-slate-800 rounded-[3rem] p-12 w-full max-w-md shadow-2xl border border-white/10 animate-in">
@@ -237,7 +235,7 @@
                                 <div className="space-y-6 animate-card">
                                     <div className="bg-white/90 backdrop-blur-2xl px-10 py-5 rounded-[3rem] shadow-sm flex items-center justify-between border border-slate-100 sticky top-4 z-40">
                                         <div className="flex items-center gap-8"><div className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-mono font-black text-2xl shadow-xl">{currentIndex + 1} / {dataList.length}</div><h2 className="font-black text-slate-800 text-3xl tracking-tighter">座號 <span className="text-blue-600">{String(currentStudent.seatNumber)}</span> — {String(currentStudent.name)}</h2></div>
-                                        <div className="flex gap-4"><button onClick={() => setCurrentIndex(p => Math.max(p - 1, 0))} disabled={currentIndex===0} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-all"><Icon name="chevron-left" size={28} /></button><button onClick={() => setCurrentIndex(p => Math.min(p + 1, dataList.length - 1))} disabled={currentIndex===dataList.length-1} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-all"><Icon name="chevron-right" size={28} /></button></div>
+                                        <div className="flex gap-4"><button onClick={() => setCurrentIndex(p => Math.max(p - 1, 0))} disabled={currentIndex===0} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-200"><Icon name="chevron-left" size={28} /></button><button onClick={() => setCurrentIndex(p => Math.min(p + 1, dataList.length - 1))} disabled={currentIndex===dataList.length-1} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-200"><Icon name="chevron-right" size={28} /></button></div>
                                     </div>
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start pb-10">
                                         <div className="bg-white p-6 rounded-[3.5rem] shadow-2xl border border-slate-50 group sticky top-36"><div className="bg-slate-100/30 rounded-[2.5rem] overflow-hidden md:min-h-[800px] flex items-center justify-center border border-slate-100 relative group-hover:shadow-inner transition-shadow">{currentStudent.preview ? <img src={currentStudent.preview} className="max-w-full max-h-full object-contain transition-transform duration-1000 group-hover:scale-110" /> : <p className="font-black text-slate-400 italic text-2xl text-center px-10">影像資料解析中...</p>}</div></div>
