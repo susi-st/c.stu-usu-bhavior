@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>學生評量管理系統 - 終極辨識版</title>
     <link rel="icon" href="data:,">
-    <!-- 引入核心庫 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,6 +19,7 @@
         .animate-card { animation: slideUp 0.4s ease-out forwards; }
         .btn-active-scale:active { transform: scale(0.95); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .transition-200 { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -28,7 +28,6 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo } = React;
         
-        // 穩定版 SVG 圖示組件
         const Icon = ({ name, size = 24, className = "" }) => {
             const paths = {
                 'loader-2': <path d="M21 12a9 9 0 1 1-6.219-8.56" />,
@@ -40,9 +39,10 @@
                 'chevron-right': <path d="m9 18 6-6-6-6" />,
                 'hash': <><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></>,
                 'user': <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
-                'sparkles': <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></>,
+                'sparkles': <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 21l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></>,
                 'check-circle': <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>,
-                'save': <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>
+                'save': <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
+                'layers': <><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.1 6.3a2 2 0 0 0 0 3.38l9.07 4.12a2 2 0 0 0 1.66 0l9.07-4.12a2 2 0 0 0 0-3.38Z"/><path d="m2.1 14.74 8.98 4.08a2 2 0 0 0 1.84 0l8.98-4.08"/><path d="m2.1 10.74 8.98 4.08a2 2 0 0 0 1.84 0l8.98-4.08"/></>
             };
             return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{paths[name] || null}</svg>;
         };
@@ -56,8 +56,9 @@
             const [cloudError, setCloudError] = useState(null);
             const [progress, setProgress] = useState({ current: 0, total: 0, task: "" });
 
-            // 您的 GAS 部署網址
             const gasUrl = "https://script.google.com/macros/s/AKfycbyHfFgeTDsyAgujt7KIrTbII7r0Oa190Dh8KJe4qh38EMxpYvd3JjxblDFPPj4109Mz/exec";
+            const apiKey = "AIzaSyAQEGtf6XIoZU2m9koMm_SKu_BvVtC3jYM";
+            
             const LEVELS = ["完全符合", "大部分符合", "部分符合", "待改進"];
 
             const indicatorThemes = [
@@ -70,6 +71,35 @@
                 { id: 6, bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-700', active: 'bg-cyan-600', ring: 'ring-cyan-100', dot: 'bg-cyan-400', hover: 'hover:bg-cyan-100/50' },
             ];
 
+            // 工具：圖片壓縮 (解決 Payload 過大導致的 CORS/GAS 錯誤)
+            const resizeImage = (file, maxWidth = 1024) => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+                            
+                            if (width > maxWidth) {
+                                height = Math.round((height * maxWidth) / width);
+                                width = maxWidth;
+                            }
+                            
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+                            // 壓縮品質 0.7
+                            resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            };
+
             const fetchCloudData = useCallback(async () => {
                 setLoadingCloud(true);
                 setCloudError(null);
@@ -81,8 +111,7 @@
                         setDataList(sorted);
                     }
                 } catch (e) {
-                    console.error("Cloud Error:", e);
-                    setCloudError("雲端載入受限。請確認 GAS 已部署為「所有人 (Anyone)」。");
+                    setCloudError("雲端載入受限。請確認 GAS 已部署為「所有人」。");
                 } finally {
                     setLoadingCloud(false);
                 }
@@ -100,17 +129,14 @@
                 if (images.length === 0) return;
                 setProcessing(true);
                 const currentResults = [...dataList];
-                setProgress({ current: 0, total: images.length, task: "啟動安全代理辨識流程..." });
+                setProgress({ current: 0, total: images.length, task: "啟動辨識..." });
 
                 for (let i = 0; i < images.length; i++) {
-                    setProgress(p => ({ ...p, current: i + 1, task: `分析第 ${i+1} 份評量中...` }));
+                    setProgress(p => ({ ...p, current: i + 1, task: `分析中 (${i+1}/${images.length})...` }));
                     try {
-                        const base64 = await new Promise((res) => {
-                            const r = new FileReader(); r.readAsDataURL(images[i].file);
-                            r.onload = () => res(r.result.split(',')[1]);
-                        });
+                        // 使用壓縮後的圖片進行傳輸
+                        const base64 = await resizeImage(images[i].file);
 
-                        // 關鍵修正：使用 text/plain 以避開 CORS OPTIONS 預檢，並追蹤重導向
                         const resp = await fetch(gasUrl, {
                             method: 'POST',
                             mode: 'cors',
@@ -123,7 +149,7 @@
                         if (data.error) throw new Error(data.error.message);
                         
                         const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (!resultText) throw new Error("AI 未回傳辨識內容");
+                        if (!resultText) throw new Error("AI 未回傳結果");
                         const result = JSON.parse(resultText);
                         
                         const entry = { ...result, seatNumber: String(result.seatNumber || ""), name: String(result.name || "未識別"), preview: `data:image/jpeg;base64,${base64}`, comment: "", isSaved: false };
@@ -131,9 +157,9 @@
                         if (idx > -1) currentResults[idx] = entry; else currentResults.push(entry);
                     } catch (e) { 
                         console.error("辨識異常:", e); 
-                        setProgress(p => ({ ...p, task: `連線失敗，請檢查 GAS 權限設定。` }));
+                        setProgress(p => ({ ...p, task: `異常: ${e.message.substring(0, 15)}...` }));
                         await new Promise(r => setTimeout(r, 2000));
-                        break;
+                        break; // 遇到錯誤暫停，避免連續失敗
                     }
                 }
                 setDataList(currentResults.sort((a, b) => (parseInt(a.seatNumber) || 0) - (parseInt(b.seatNumber) || 0)));
@@ -145,7 +171,7 @@
             const saveToSheet = async (index) => {
                 if (!dataList[index]) return;
                 setProcessing(true);
-                setProgress({ current: 1, total: 1, task: "正在同步至雲端..." });
+                setProgress({ current: 1, total: 1, task: "存檔中..." });
                 try {
                     await fetch(gasUrl, { 
                         method: 'POST', 
@@ -153,12 +179,10 @@
                         headers: { 'Content-Type': 'text/plain' },
                         body: JSON.stringify({ ...dataList[index], action: "save" }) 
                     });
-                    setDataList(prev => {
-                        const newList = [...prev];
-                        newList[index].isSaved = true;
-                        return newList;
-                    });
-                } catch (e) { alert("同步連線異常"); }
+                    const newList = [...dataList];
+                    newList[index].isSaved = true;
+                    setDataList(newList);
+                } catch (e) { alert("存檔失敗"); }
                 setProcessing(false);
             };
 
@@ -170,7 +194,7 @@
                 const map = new Map();
                 currentStudent.assessments.forEach((item, originalIdx) => {
                     const parts = item.item.split(/[-－:：]/);
-                    const category = parts.length > 1 ? parts[0].trim() : "指標項目";
+                    const category = parts.length > 1 ? parts[0].trim() : "指標";
                     const subItem = parts.length > 1 ? parts.slice(1).join('-').trim() : item.item.trim();
                     if (!map.has(category)) {
                         const theme = indicatorThemes[groups.length % indicatorThemes.length];
@@ -223,7 +247,7 @@
                             <div className="bg-white p-12 rounded-[4rem] shadow-2xl text-center border border-slate-100 animate-card">
                                 <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><Icon name="scan-face" size={48} /></div>
                                 <h1 className="text-5xl font-black mb-6 tracking-tighter text-slate-800">學生評量管理系統</h1>
-                                <p className="text-slate-500 mb-12 text-xl font-medium max-w-3xl mx-auto leading-relaxed">雙環境通用版本。支援 Canvas 與 GitHub 跨網域連線，並採用後端安全代理辨識技術。</p>
+                                <p className="text-slate-500 mb-12 text-xl font-medium max-w-3xl mx-auto leading-relaxed">已加入「智慧影像壓縮」技術。上傳照片會自動優化大小，徹底解決連線中斷與 CORS 錯誤。</p>
                                 {cloudError && <div className="mb-10 p-6 bg-rose-50 text-rose-700 rounded-[2rem] text-sm border border-rose-100 flex items-start gap-4 text-left max-w-2xl mx-auto shadow-sm"><Icon name="shield-alert" size={24} className="flex-shrink-0 mt-1" /><p className="font-medium text-balance">{String(cloudError)}</p></div>}
                                 <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" id="file-upload" />
                                 <label htmlFor="file-upload" className="block p-20 border-4 border-dashed border-slate-100 rounded-[4rem] cursor-pointer hover:bg-blue-50 transition-all duration-500 group"><Icon name="upload-cloud" size={72} className="mx-auto text-slate-300 mb-6 group-hover:-translate-y-3 transition-transform" /><p className="text-3xl font-black text-slate-700 tracking-tight">{images.length > 0 ? `已選取 ${images.length} 份文件` : "點擊此處匯入評量照片"}</p></label>
@@ -255,7 +279,7 @@
                                                                         <span className="text-sm font-bold text-slate-700 leading-tight flex-1 mr-4">{item.displayName}</span>
                                                                         <div className="flex bg-white/40 p-0.5 rounded-xl border border-white/30 shadow-inner no-scrollbar overflow-x-auto">
                                                                             {LEVELS.map(l => (
-                                                                                <button key={l} onClick={() => updateAssessment(item.originalIdx, l)} className={`px-3 py-1.5 text-[9px] sm:text-[10px] font-black rounded-lg transition-all duration-200 whitespace-nowrap btn-active-scale ${item.level === l ? `${group.theme.active} text-white shadow-md ring-2 ${group.theme.ring}` : `text-slate-400 hover:text-slate-500 bg-transparent`}`}>{String(l)}</button>
+                                                                                <button key={l} onClick={() => updateAssessment(item.originalIdx, l)} className={`px-3 py-1.5 text-[9px] sm:text-[10px] font-black rounded-lg transition-all duration-300 whitespace-nowrap btn-active-scale ${item.level === l ? `${group.theme.active} text-white shadow-md ring-2 ${group.theme.ring}` : `text-slate-400 hover:text-slate-500 bg-transparent`}`}>{String(l)}</button>
                                                                             ))}
                                                                         </div>
                                                                     </div>
@@ -265,7 +289,7 @@
                                                     </div>
                                                 ))}
                                             </div>
-                                            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-100 flex flex-col gap-6"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 font-mono"><Icon name="sparkles" size={14} /> AI TEACHER FEEDBACK</label><textarea value={String(currentStudent.comment || "")} onChange={e => updateField('comment', String(e.target.value))} className="w-full h-44 p-8 bg-blue-50/10 rounded-[2.5rem] focus:bg-white outline-none resize-none text-slate-700 text-lg italic leading-relaxed shadow-inner transition-all-200" /></div>
+                                            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-100 flex flex-col gap-6"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 font-mono"><Icon name="sparkles" size={14} /> AI TEACHER FEEDBACK</label><textarea value={String(currentStudent.comment || "")} onChange={e => updateField('comment', String(e.target.value))} className="w-full h-44 p-8 bg-blue-50/10 rounded-[2.5rem] focus:bg-white outline-none resize-none text-slate-700 text-lg italic leading-relaxed shadow-inner" /></div>
                                             <button onClick={() => saveToSheet(currentIndex)} className={`w-full py-7 rounded-[3rem] font-black text-2xl flex items-center justify-center gap-5 transition-all duration-500 shadow-2xl hover:-translate-y-1 active:scale-95 ${currentStudent.isSaved ? 'bg-emerald-500 text-white shadow-emerald-100 ring-4 ring-emerald-50' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>{currentStudent.isSaved ? <><Icon name="check-circle" size={32} /> 資料同步成功</> : <><Icon name="save" size={32} /> 確認並存至雲端</>}</button>
                                         </div>
                                     </div>
