@@ -29,7 +29,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo } = React;
         
-        // 穩定版 SVG 圖示
+        // 穩定版 SVG 圖示組件：不操作 DOM，與 React 完全相容
         const Icon = ({ name, size = 24, className = "" }) => {
             const paths = {
                 'loader-2': <path d="M21 12a9 9 0 1 1-6.219-8.56" />,
@@ -41,14 +41,15 @@
                 'chevron-right': <path d="m9 18 6-6-6-6" />,
                 'hash': <><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></>,
                 'user': <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
-                'sparkles': <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 21l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></>,
+                'sparkles': <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></>,
                 'check-circle': <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>,
-                'save': <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>
+                'save': <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
+                'layers': <><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.1 6.3a2 2 0 0 0 0 3.38l9.07 4.12a2 2 0 0 0 1.66 0l9.07-4.12a2 2 0 0 0 0-3.38Z"/><path d="m2.1 14.74 8.98 4.08a2 2 0 0 0 1.84 0l8.98-4.08"/><path d="m2.1 10.74 8.98 4.08a2 2 0 0 0 1.84 0l8.98-4.08"/></>
             };
             return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{paths[name] || null}</svg>;
         };
 
-        const AdvancedAssessmentApp = () => {
+        const App = () => {
             const [images, setImages] = useState([]);
             const [dataList, setDataList] = useState([]);
             const [currentIndex, setCurrentIndex] = useState(0);
@@ -57,6 +58,7 @@
             const [cloudError, setCloudError] = useState(null);
             const [progress, setProgress] = useState({ current: 0, total: 0, task: "" });
 
+            // 配置網址
             const gasUrl = "https://script.google.com/macros/s/AKfycbyHfFgeTDsyAgujt7KIrTbII7r0Oa190Dh8KJe4qh38EMxpYvd3JjxblDFPPj4109Mz/exec";
             const LEVELS = ["完全符合", "大部分符合", "部分符合", "待改進"];
 
@@ -74,7 +76,11 @@
                 setLoadingCloud(true);
                 setCloudError(null);
                 try {
-                    const response = await fetch(gasUrl, { method: 'GET', redirect: 'follow' });
+                    // 使用 GET 請求載入存檔
+                    const response = await fetch(gasUrl, { 
+                        method: 'GET', 
+                        redirect: 'follow'
+                    });
                     const cloudData = await response.json();
                     if (Array.isArray(cloudData)) {
                         const sorted = cloudData.map(item => ({ ...item, isSaved: true })).sort((a, b) => (parseInt(a.seatNumber) || 0) - (parseInt(b.seatNumber) || 0));
@@ -82,7 +88,7 @@
                     }
                 } catch (e) {
                     console.error("Cloud Error:", e);
-                    setCloudError("雲端載入失敗。請檢查 GAS 是否部署為「所有人」。");
+                    setCloudError("雲端載入受限。請確認 GAS 已部署為「所有人」。");
                 } finally {
                     setLoadingCloud(false);
                 }
@@ -92,7 +98,8 @@
 
             const handleFileUpload = (e) => {
                 const files = Array.from(e.target.files);
-                setImages(files.map(file => ({ file, id: Math.random().toString(36).substr(2, 9), preview: URL.createObjectURL(file) })));
+                const newImages = files.map(file => ({ file, id: Math.random().toString(36).substr(2, 9), preview: URL.createObjectURL(file) }));
+                setImages(prev => [...prev, ...newImages]);
             };
 
             const startRecognition = async () => {
@@ -102,18 +109,18 @@
                 setProgress({ current: 0, total: images.length, task: "啟動安全代理辨識流程..." });
 
                 for (let i = 0; i < images.length; i++) {
-                    setProgress(p => ({ ...p, current: i + 1, task: `正在執行第 ${i+1} 份辨識請求...` }));
+                    setProgress(p => ({ ...p, current: i + 1, task: `分析第 ${i+1} 份評量中...` }));
                     try {
                         const base64 = await new Promise((res) => {
                             const r = new FileReader(); r.readAsDataURL(images[i].file);
                             r.onload = () => res(r.result.split(',')[1]);
                         });
 
-                        // 重要修正：使用 text/plain 以避開 CORS OPTIONS 預檢
+                        // 核心穩定性修正：使用不帶特定 Header 的 POST 請求以繞過 CORS 預檢
                         const resp = await fetch(gasUrl, {
                             method: 'POST',
-                            mode: 'cors',
-                            headers: { 'Content-Type': 'text/plain' },
+                            redirect: 'follow',
+                            // 不設定 Content-Type: application/json 以避免 OPTIONS 預檢失敗
                             body: JSON.stringify({ action: "ocr", base64: base64 })
                         });
                         
@@ -128,9 +135,9 @@
                         const idx = currentResults.findIndex(item => String(item.seatNumber) === String(result.seatNumber));
                         if (idx > -1) currentResults[idx] = entry; else currentResults.push(entry);
                     } catch (e) { 
-                        console.error("辨識報錯:", e); 
-                        setProgress(p => ({ ...p, task: `辨識失敗: 請檢查 GAS 部署權限。` }));
-                        await new Promise(r => setTimeout(r, 2500));
+                        console.error("辨識異常:", e); 
+                        setProgress(p => ({ ...p, task: `連線失敗: 請確認 GAS 權限。` }));
+                        await new Promise(r => setTimeout(r, 2000));
                         break;
                     }
                 }
@@ -143,11 +150,11 @@
             const saveToSheet = async (index) => {
                 if (!dataList[index]) return;
                 setProcessing(true);
-                setProgress({ current: 1, total: 1, task: "同步雲端試算表中..." });
+                setProgress({ current: 1, total: 1, task: "同步雲端中..." });
                 try {
                     await fetch(gasUrl, { 
                         method: 'POST', 
-                        headers: { 'Content-Type': 'text/plain' },
+                        redirect: 'follow',
                         body: JSON.stringify({ ...dataList[index], action: "save" }) 
                     });
                     const newList = [...dataList];
@@ -219,7 +226,7 @@
                             <div className="bg-white p-12 rounded-[4rem] shadow-2xl text-center border border-slate-100 animate-card">
                                 <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><Icon name="scan-face" size={48} /></div>
                                 <h1 className="text-5xl font-black mb-6 tracking-tighter text-slate-800">學生評量管理系統</h1>
-                                <p className="text-slate-500 mb-12 text-xl font-medium max-w-3xl mx-auto leading-relaxed">啟動「安全繞行」模式。辨識結果可進行人工點選校對，底色將即時連動切換。</p>
+                                <p className="text-slate-500 mb-12 text-xl font-medium max-w-3xl mx-auto leading-relaxed">雙環境通用版本。支援 Canvas 與 GitHub 同步環境，採用安全代理辨識技術。</p>
                                 {cloudError && <div className="mb-10 p-6 bg-rose-50 text-rose-700 rounded-[2rem] text-sm border border-rose-100 flex items-start gap-4 text-left max-w-2xl mx-auto shadow-sm"><Icon name="shield-alert" size={24} className="flex-shrink-0 mt-1" /><p className="font-medium text-balance">{String(cloudError)}</p></div>}
                                 <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" id="file-upload" />
                                 <label htmlFor="file-upload" className="block p-20 border-4 border-dashed border-slate-100 rounded-[4rem] cursor-pointer hover:bg-blue-50 transition-all duration-500 group"><Icon name="upload-cloud" size={72} className="mx-auto text-slate-300 mb-6 group-hover:-translate-y-3 transition-transform" /><p className="text-3xl font-black text-slate-700 tracking-tight">{images.length > 0 ? `已選取 ${images.length} 份文件` : "點擊此處匯入評量照片"}</p></label>
@@ -230,10 +237,10 @@
                                 <div className="space-y-6 animate-card">
                                     <div className="bg-white/90 backdrop-blur-2xl px-10 py-5 rounded-[3rem] shadow-sm flex items-center justify-between border border-slate-100 sticky top-4 z-40">
                                         <div className="flex items-center gap-8"><div className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-mono font-black text-2xl shadow-xl">{currentIndex + 1} / {dataList.length}</div><h2 className="font-black text-slate-800 text-3xl tracking-tighter">座號 <span className="text-blue-600">{String(currentStudent.seatNumber)}</span> — {String(currentStudent.name)}</h2></div>
-                                        <div className="flex gap-4"><button onClick={() => setCurrentIndex(p => Math.max(p - 1, 0))} disabled={currentIndex===0} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-200"><Icon name="chevron-left" size={28} /></button><button onClick={() => setCurrentIndex(p => Math.min(p + 1, dataList.length - 1))} disabled={currentIndex===dataList.length-1} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-200"><Icon name="chevron-right" size={28} /></button></div>
+                                        <div className="flex gap-4"><button onClick={() => setCurrentIndex(p => Math.max(p - 1, 0))} disabled={currentIndex===0} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-all"><Icon name="chevron-left" size={28} /></button><button onClick={() => setCurrentIndex(p => Math.min(p + 1, dataList.length - 1))} disabled={currentIndex===dataList.length-1} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30 transition-all"><Icon name="chevron-right" size={28} /></button></div>
                                     </div>
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start pb-10">
-                                        <div className="bg-white p-6 rounded-[3.5rem] shadow-2xl border border-slate-50 group sticky top-36"><div className="bg-slate-100/30 rounded-[2.5rem] overflow-hidden md:min-h-[800px] flex items-center justify-center border border-slate-100 relative group-hover:shadow-inner transition-shadow">{currentStudent.preview ? <img src={currentStudent.preview} className="max-w-full max-h-full object-contain transition-transform duration-1000 group-hover:scale-110" /> : <p className="font-black text-slate-400 italic text-2xl text-center px-10">影像載入中...</p>}</div></div>
+                                        <div className="bg-white p-6 rounded-[3.5rem] shadow-2xl border border-slate-50 group sticky top-36"><div className="bg-slate-100/30 rounded-[2.5rem] overflow-hidden md:min-h-[800px] flex items-center justify-center border border-slate-100 relative group-hover:shadow-inner transition-shadow">{currentStudent.preview ? <img src={currentStudent.preview} className="max-w-full max-h-full object-contain transition-transform duration-1000 group-hover:scale-110" /> : <p className="font-black text-slate-400 italic text-2xl text-center px-10">影像資料解析中...</p>}</div></div>
                                         <div className="space-y-6">
                                             <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border border-slate-100 grid grid-cols-2 gap-8">
                                                 <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">SEAT NO.</label><input type="number" value={String(currentStudent.seatNumber || "")} onChange={e => updateField('seatNumber', String(e.target.value))} className="w-full text-4xl font-black border-b-4 border-slate-50 focus:border-blue-500 outline-none pb-2 bg-transparent transition-all" /></div>
@@ -273,7 +280,7 @@
             );
         };
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<AdvancedAssessmentApp />);
+        root.render(<App />);
     </script>
 </body>
 </html>
