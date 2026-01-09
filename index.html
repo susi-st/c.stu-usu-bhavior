@@ -77,7 +77,8 @@
 
             // 配置區
             const gasUrl = "https://script.google.com/macros/s/AKfycbyHfFgeTDsyAgujt7KIrTbII7r0Oa190Dh8KJe4qh38EMxpYvd3JjxblDFPPj4109Mz/exec";
-            const apiKey = "AIzaSyAQEGtf6XIoZU2m9koMm_SKu_BvVtC3jYM";
+            // 已更新為新的 API Key
+            const apiKey = "AIzaSyDsEWAscuH8d4DhowpVJ-xRlFZ2eyqMpxI"; 
             
             const LEVELS = ["完全符合", "大部分符合", "部分符合", "待改進"];
 
@@ -111,7 +112,7 @@
                     }
                 } catch (e) {
                     console.error("Cloud Error:", e);
-                    setCloudError("雲端載入受限：環境安全性限制 (CORS)。部署至正式網址後即可恢復。");
+                    setCloudError("雲端載入受限：環境安全性限制 (CORS)。正式部署至 GitHub Pages 並確認 GAS 權限後即可恢復。");
                 } finally {
                     setLoadingCloud(false);
                 }
@@ -125,6 +126,10 @@
             };
 
             const startRecognition = async () => {
+                if (!apiKey) {
+                    setCloudError("請先在程式碼中填入新的 API Key 才能開始辨識。");
+                    return;
+                }
                 if (images.length === 0) return;
                 setProcessing(true);
                 const results = [...dataList];
@@ -143,7 +148,7 @@
 1. **逐列掃描**：從上到下辨識每一行指標。絕對不可跳過或合併項目。
 2. **完整擷取**：必須包含原始編號（如 1. 2. 3.）。
 3. **標記判定**：格子內有打勾或標記才判定為對應向度。空格一律判定為「未勾選」。
-4. **向度準則**：包含完全符合、大部分符合、部分符合、待改進四個位置。
+4. **向度準則**：共有完全符合、大部分符合、部分符合、待改進四個位置。
 
 輸出純 JSON：
 { "seatNumber": "數字", "name": "姓名", "assessments": [{"item": "分類-完整編號項目內容", "level": "向度名稱/未勾選"}] }`;
@@ -189,7 +194,7 @@
                 setProcessing(true);
                 setProgress({ current: 1, total: 1, task: `正在構思勉勵評語...` });
                 try {
-                    const prompt = `你是一位溫暖導師。寫一段 60 字暖心評語，針對座號 ${student.seatNumber}：${JSON.stringify(student.assessments)}`;
+                    const prompt = `你是一位溫暖導師。寫一段 60 字暖心評語，針對座號 ${student.seatNumber} 同學的表現：${JSON.stringify(student.assessments)}`;
                     const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -216,12 +221,10 @@
                 setProcessing(false);
             };
 
-            // 安全獲取當前學生資料
             const currentStudent = useMemo(() => {
                 return (dataList && dataList.length > 0 && dataList[currentIndex]) ? dataList[currentIndex] : null;
             }, [dataList, currentIndex]);
 
-            // 分組呈現邏輯：精確整合區塊
             const groupedAssessments = useMemo(() => {
                 if (!currentStudent || !currentStudent.assessments) return [];
                 const groups = [];
@@ -249,13 +252,14 @@
                 setDataList(newList);
             };
 
-            // 深層狀態更新：確保按鈕底色切換立即生效
+            // 深層狀態更新：確保點擊瞬間底色即時切換
             const updateAssessment = (originalIdx, level) => {
                 setDataList(prevList => {
                     const newList = [...prevList];
                     const student = { ...newList[currentIndex] };
                     const assessments = [...student.assessments];
                     
+                    // 修改內容
                     assessments[originalIdx] = { ...assessments[originalIdx], level: level };
                     student.assessments = assessments;
                     student.isSaved = false;
@@ -271,7 +275,7 @@
                     {processing && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[60] flex items-center justify-center p-6 text-white text-center">
                             <div className="bg-slate-800 rounded-[3rem] p-12 w-full max-w-md shadow-2xl border border-white/10 animate-in">
-                                <Icon name="loader-2" size={64} className="animate-spin text-blue-400 mb-4" />
+                                <Icon name="loader-2" size={64} className="animate-spin text-blue-400 mx-auto mb-6" />
                                 <h3 className="text-2xl font-black mb-4 tracking-tighter text-balance">{progress.task}</h3>
                                 <div className="w-full bg-slate-700 rounded-full h-1.5 mb-3 overflow-hidden">
                                     <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
@@ -285,7 +289,7 @@
                             <div className="bg-white p-12 rounded-[4rem] shadow-2xl text-center border border-slate-100 animate-card">
                                 <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><Icon name="scan-face" size={48} /></div>
                                 <h1 className="text-5xl font-black mb-6 tracking-tighter text-slate-800">學生評量管理系統</h1>
-                                <p className="text-slate-500 mb-12 text-xl font-medium max-w-3xl mx-auto leading-relaxed">已啟動嚴格觀察模式。部署 GitHub 後若連線失敗，請檢查 API Key 使用限制或 GAS 存取權限。</p>
+                                <p className="text-slate-500 mb-12 text-xl font-medium max-w-3xl mx-auto leading-relaxed">啟動「忠實還原」AI：系統將精準擷取每一列指標與原始編號，絕不自行增減內容。</p>
                                 {cloudError && <div className="mb-10 p-6 bg-rose-50 text-rose-700 rounded-[2rem] text-sm border border-rose-100 flex items-start gap-4 text-left max-w-2xl mx-auto shadow-sm"><Icon name="shield-alert" size={24} className="flex-shrink-0 mt-1" /><p>{String(cloudError)}</p></div>}
                                 <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" id="file-upload" />
                                 <label htmlFor="file-upload" className="block p-20 border-4 border-dashed border-slate-100 rounded-[4rem] cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-all duration-500 group">
@@ -303,7 +307,7 @@
                                     <div className="bg-white/90 backdrop-blur-2xl px-10 py-5 rounded-[3rem] shadow-sm flex items-center justify-between border border-slate-100 sticky top-4 z-40">
                                         <div className="flex items-center gap-8">
                                             <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-mono font-black text-2xl shadow-xl">{currentIndex + 1} / {dataList.length}</div>
-                                            <h2 className="font-black text-slate-800 text-3xl tracking-tighter text-balance">座號 <span className="text-blue-600">{String(currentStudent.seatNumber)}</span> — {String(currentStudent.name)}</h2>
+                                            <h2 className="font-black text-slate-800 text-3xl tracking-tighter">座號 <span className="text-blue-600">{String(currentStudent.seatNumber)}</span> — {String(currentStudent.name)}</h2>
                                         </div>
                                         <div className="flex gap-4">
                                             <button onClick={() => setCurrentIndex(p => Math.max(p - 1, 0))} disabled={currentIndex===0} className="p-5 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-90 shadow-sm disabled:opacity-30"><Icon name="chevron-left" size={28} /></button>
@@ -328,7 +332,7 @@
                                                 <input type="text" value={String(currentStudent.name || "")} onChange={e => updateField('name', String(e.target.value))} className="w-full text-4xl font-black border-b-4 border-slate-50 focus:border-blue-500 outline-none pb-2 bg-transparent transition-all" /></div>
                                             </div>
 
-                                            {/* 指標分區 */}
+                                            {/* 指標分區彙整 */}
                                             <div className="space-y-4">
                                                 {groupedAssessments.map((group, gIdx) => (
                                                     <div key={gIdx} className={`rounded-[3rem] border-2 ${group.theme.border} ${group.theme.bg} shadow-md relative overflow-hidden transition-all hover:shadow-xl`}>
